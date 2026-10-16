@@ -1,4 +1,9 @@
-"""Buscador de PDFs con agente local + LLM remoto (OpenAI GPT-4o-mini)."""
+"""Buscador de PDFs con agente local + LLM remoto opcional (OpenAI GPT-4o-mini).
+
+Todo corre localmente excepto el LLM. Si no hay OPENAI_API_KEY, la app funciona en
+modo búsqueda local: devuelve los fragmentos mas similares con sus fuentes, sin
+respuesta generada por el modelo.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +18,6 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ingest  # noqa: E402
 
-from openai import OpenAI  # noqa: E402
 import chromadb  # noqa: E402
 from sentence_transformers import SentenceTransformer  # noqa: E402
 
@@ -27,10 +31,13 @@ LLM_MODEL = "gpt-4o-mini"
 TOP_K = 5
 
 
-def get_openai_client() -> Optional[OpenAI]:
+def get_openai_client() -> Optional["OpenAI"]:
+    """Retorna cliente OpenAI si hay API key, None en caso contrario."""
     api_key = os.getenv("OPENAI_API_KEY") or st.session_state.get("openai_api_key")
     if not api_key:
         return None
+    from openai import OpenAI  # import lazy para no fallar sin la librería
+
     return OpenAI(api_key=api_key)
 
 
@@ -78,10 +85,10 @@ def build_context(hits: list[dict]) -> str:
     return "\n\n---\n\n".join(blocks)
 
 
-def ask_llm(client: OpenAI, question: str, context: str) -> str:
+def ask_llm(client: "OpenAI", question: str, context: str) -> str:
     system = (
         "Eres un asistente que responde SOLO usando el contexto proporcionado. "
-        "Responde en español. Si la respuesta no esta en el contexto, di que no "
+        "Responde en espanol. Si la respuesta no esta en el contexto, di que no "
         "sabes. Cita siempre la fuente y pagina entre parentesis como "
         "(archivo.pdf — pagina X). No inventes informacion."
     )
@@ -104,19 +111,24 @@ def ask_llm(client: OpenAI, question: str, context: str) -> str:
 def main() -> None:
     st.set_page_config(page_title="Buscador de PDFs", page_icon="📄")
     st.title("📄 Buscador de PDFs con agente")
-    st.caption("Todo local excepto el modelo de lenguaje (OpenAI GPT-4o-mini).")
+    st.caption(
+        "Todo local excepto el modelo de lenguaje (OpenAI GPT-4o-mini). "
+        "Sin API key, la app hace búsqueda local y muestra fragmentos con fuentes."
+    )
 
     with st.sidebar:
         st.header("⚙️ Configuracion")
         api_key = st.text_input(
-            "OPENAI API Key",
+            "OPENAI API Key (opcional)",
             type="password",
             value=os.getenv("OPENAI_API_KEY", ""),
-            help="Se necesita solo para el LLM (remoto). Los embeddings y Chroma son locales.",
+            help="Solo necesaria para que el LLM genere respuestas. "
+            "Sin ella, la app hace busqueda semantica local.",
         )
         if api_key:
             st.session_state["openai_api_key"] = api_key
 
+        client = get_openai_client()
         st.divider()
         st.subheader("1. Subir PDFs")
         uploaded = st.file_uploader(
@@ -151,6 +163,7 @@ def main() -> None:
             [f for f in os.listdir(PDF_DIR) if f.lower().endswith(".pdf")]
         ) if os.path.exists(PDF_DIR) else 0
         st.write(f"PDFs en carpeta: {pdf_count}")
+        st.write(f"LLM remoto: {'configurado' if client else 'no (modo local)'}")
 
     st.divider()
     st.subheader("3. Hacer una pregunta")
@@ -160,23 +173,36 @@ def main() -> None:
     )
 
     if st.button("Buscar", disabled=not question):
-        if not get_openai_client():
-            st.error("Necesitas configurar tu OPENAI API Key en la barra lateral.")
-            return
-
         if not os.path.exists(CHROMA_DIR):
             st.error("Primero indexa los PDFs (paso 2 en la barra lateral).")
             return
 
-        with st.spinner("Buscando en Chroma y consultando al modelo..."):
+        with st.spinner("Buscando en Chroma..."):
             query_emb = embed_query(question)
             hits = search_chroma(query_emb, top_k=TOP_K)
-            context = build_context(hits)
-            client = get_openai_client()
-            answer = ask_llm(client, question, context)
 
-        st.markdown("### Respuesta")
-        st.write(answer)
+        if not hits:
+            st.warning("No se encontraron fragmentos relevantes.")
+            return
+
+        client = get_openai_client()
+
+        if client:
+            # Modo con LLM: generar respuesta
+            context = build_context(hits)
+            with st.spinner("Generando respuesta con el modelo..."):
+                answer = ask_llm(client, question, context)
+
+            st.markdown("### Respuesta")
+            st.write(answer)
+        else:
+            # Modo local: mostrar fragmentos directamente
+            st.markdown("### Resultados de búsqueda (modo local, sin LLM)")
+            st.info(
+                "No se encontro OPENAI_API_KEY. Se muestran los fragmentos mas "
+                "similares directamente. Agrega tu clave en la barra lateral para "
+                "obtener respuestas generadas por el modelo."
+            )
 
         if hits:
             st.markdown("### Fuentes")
