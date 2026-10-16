@@ -1,0 +1,6 @@
+streamlit>=1.30
+pymupdf>=1.23
+sentence-transformers>=2.3
+chromadb>=0.4
+openai>=1.30
+python-dotenv>=1.0
