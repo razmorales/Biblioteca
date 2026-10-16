@@ -15,7 +15,7 @@ from sentence_transformers import SentenceTransformer
 PDF_DIR = "./pdfs"
 CHROMA_DIR = "./chroma_db"
 COLLECTION_NAME = "pdfs"
-EMBED_MODEL = "all-MiniLM-L6-v2"
+EMBED_MODEL = "all-MiniLM-L3-v2"
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100
 INDEXED_FILE = os.path.join(CHROMA_DIR, ".indexed")

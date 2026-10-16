@@ -26,7 +26,7 @@ load_dotenv()
 PDF_DIR = "./pdfs"
 CHROMA_DIR = "./chroma_db"
 COLLECTION_NAME = "pdfs"
-EMBED_MODEL = "all-MiniLM-L6-v2"
+EMBED_MODEL = "all-MiniLM-L3-v2"
 LLM_MODEL = "gpt-4o-mini"
 TOP_K = 5
 
